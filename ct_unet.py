@@ -23,7 +23,7 @@ if not torch.cuda.is_available():
 
 DATA_DIR = './chest-ct-segmentation/'
 csv_path = DATA_DIR + 'train.csv'
-PRETRAINED_MODEL_PATH = DATA_DIR + 'best_model.pth'
+PRETRAINED_MODEL_PATH = DATA_DIR + 'best_model_ct.pth'
 ENCODER = 'resnet34'
 ENCODER_WEIGHTS = 'imagenet'
 CLASSES = ['background',
@@ -32,7 +32,7 @@ CLASSES = ['background',
 
 ACTIVATION = 'softmax2d' # could be None for logits or 'softmax2d' for multiclass segmentation
 DEVICE = 'cuda'
-EPOCHS = 5
+EPOCHS = 0
 
 # create segmentation model with pretrained encoder
 model = smp.Unet(
@@ -46,7 +46,7 @@ model = smp.Unet(
 # IoU/Jaccard score - https://en.wikipedia.org/wiki/Jaccard_index
 loss = smp.utils.losses.DiceLoss() #smp.utils.losses.CrossEntropyLoss()
 metrics = [
-    smp.utils.metrics.IoU(threshold=0.5, ignore_channels=[0])
+    smp.utils.metrics.IoU(threshold=0.5)#, ignore_channels=[0])
 ]
 test_metrics = [
     smp.utils.metrics.IoU(threshold=0.5, ignore_channels=[1, 2, 3]),
@@ -283,10 +283,10 @@ if __name__ == '__main__':
             torch.save(model, PRETRAINED_MODEL_PATH)
             print('Model saved!')
         if i == 5:
-            optimizer.param_groups[0]['lr'] = 0.0005
+            optimizer.param_groups[0]['lr'] = 0.000005
             print('Decrease decoder learning rate to 0.0001!')
         if i == 10:
-            optimizer.param_groups[0]['lr'] = 0.0001
+            optimizer.param_groups[0]['lr'] = 0.000001
             print('Decrease decoder learning rate to 0.00005!')
         '''
         if i == 15:
@@ -348,23 +348,27 @@ if __name__ == '__main__':
         pr_mask = best_model.predict(x_tensor)
         pr_mask = (pr_mask.squeeze().cpu().numpy().round())
 
+        x_tensor = torch.from_numpy(image).to(DEVICE).unsqueeze(0)
+        pr_mask = best_model.predict(x_tensor)
+        pr_mask = (pr_mask.squeeze().cpu().numpy().round())
+
         gt_mask = np.transpose(gt_mask, (1, 2, 0))
         pr_mask = np.transpose(pr_mask, (1, 2, 0))
 
-        gt_mask_gray = np.zeros((gt_mask.shape[0],gt_mask.shape[1]))
-        for ii in range(gt_mask.shape[2]):
-            gt_mask_gray = gt_mask_gray + 1/gt_mask.shape[2]*ii*gt_mask[:,:,ii]
+        gt_mask_color = np.zeros((gt_mask.shape[0],gt_mask.shape[1],3))
+        for ii in range(1, gt_mask.shape[2]):
+            gt_mask_color[:,:,ii-1] = gt_mask[:,:,ii]
 
-        pr_mask_gray = np.zeros((pr_mask.shape[0],pr_mask.shape[1]))
+        pr_mask_color = np.zeros((pr_mask.shape[0],pr_mask.shape[1],3))
         print('\nimage', i)
-        for ii in range(pr_mask.shape[2]):
+        for ii in range(1,pr_mask.shape[2]):
             if np.any(pr_mask[:,:,ii] >= 1):
                 print(ii, CLASSES[ii], end = ' ')
-            pr_mask_gray = pr_mask_gray + 1/pr_mask.shape[2]*ii*pr_mask[:,:,ii]
+            pr_mask_color[:,:,ii-1] = pr_mask[:,:,ii]
 
-        cv2.imwrite(DATA_DIR + 'output/' + str(i) + '.jpg', pr_mask_gray*255)
+        cv2.imwrite(DATA_DIR + 'output/' + str(i) + '.jpg', pr_mask_color*255)
         visualize(
             image=image_vis,
-            ground_truth_mask=gt_mask_gray,
-            predicted_mask=pr_mask_gray
+            ground_truth_mask=gt_mask_color,
+            predicted_mask=pr_mask_color
         )
