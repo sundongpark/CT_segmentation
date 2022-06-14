@@ -32,7 +32,7 @@ CLASSES = ['background',
 
 ACTIVATION = 'softmax2d' # could be None for logits or 'softmax2d' for multiclass segmentation
 DEVICE = 'cuda'
-EPOCHS = 0
+EPOCHS = 5
 
 # create segmentation model with pretrained encoder
 model = smp.Unet(
@@ -46,7 +46,7 @@ model = smp.Unet(
 # IoU/Jaccard score - https://en.wikipedia.org/wiki/Jaccard_index
 loss = smp.utils.losses.DiceLoss() #smp.utils.losses.CrossEntropyLoss()
 metrics = [
-    smp.utils.metrics.IoU(threshold=0.5)#, ignore_channels=[0])
+    smp.utils.metrics.IoU(threshold=0.5)
 ]
 test_metrics = [
     smp.utils.metrics.IoU(threshold=0.5, ignore_channels=[1, 2, 3]),
@@ -56,8 +56,7 @@ test_metrics = [
 ]
 
 optimizer = torch.optim.Adam([
-    dict(params=model.parameters(), lr=0.00001)#, betas=(0.9, 0.999)),
-    #dict(params=model.parameters(), lr=0.001, betas=(0.9, 0.999)),
+    dict(params=model.parameters(), lr=0.00001)
 ])
 
 # load repo with data if it is not exists
@@ -114,12 +113,12 @@ class Dataset(BaseDataset):
         image = cv2.imread(DATA_DIR + 'images/' + self.x[i])
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         mask = cv2.imread(DATA_DIR + 'masks/' + self.y[i])
+        mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
 
         mask[mask < 240] = 0    # remove artifacts
         mask[mask > 0] = 1
         masks = [mask[:,:,v] >= 1 for v in range(3)]
-        # extract certain classes from mask
-        #masks = [(mask == v) for v in self.class_values]
+
         mask = np.stack(masks, axis=-1).astype('float')
 
         # set background if mask is not binary
@@ -282,13 +281,13 @@ if __name__ == '__main__':
             max_score = valid_logs['iou_score']
             torch.save(model, PRETRAINED_MODEL_PATH)
             print('Model saved!')
+        '''
         if i == 5:
             optimizer.param_groups[0]['lr'] = 0.000005
             print('Decrease decoder learning rate to 0.0001!')
         if i == 10:
             optimizer.param_groups[0]['lr'] = 0.000001
             print('Decrease decoder learning rate to 0.00005!')
-        '''
         if i == 15:
             optimizer.param_groups[0]['lr'] = 0.00005
             print('Decrease decoder learning rate to 0.00001!')
@@ -340,6 +339,7 @@ if __name__ == '__main__':
 
         image_vis = test_dataset[n][0].astype('uint8')
         image_vis = np.transpose(image_vis, (1, 2, 0))
+
         image, gt_mask = test_dataset[n]
 
         gt_mask = gt_mask.squeeze()
@@ -366,9 +366,13 @@ if __name__ == '__main__':
                 print(ii, CLASSES[ii], end = ' ')
             pr_mask_color[:,:,ii-1] = pr_mask[:,:,ii]
 
-        cv2.imwrite(DATA_DIR + 'output/' + str(i) + '.jpg', pr_mask_color*255)
+        add_image = cv2.addWeighted(image_vis, 0.8, pr_mask_color, 0.2, 0, dtype=cv2.CV_64F)
+
         visualize(
             image=image_vis,
             ground_truth_mask=gt_mask_color,
             predicted_mask=pr_mask_color
+#          , predicted = add_image
         )
+        pr_mask_color = cv2.cvtColor(pr_mask_color.astype('float32'), cv2.COLOR_RGB2BGR)
+        cv2.imwrite(DATA_DIR + 'output/' + str(i) + '.jpg', pr_mask_color*255)
